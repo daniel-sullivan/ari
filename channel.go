@@ -267,6 +267,9 @@ type ExternalMediaOptions struct {
 	// Direction specifies the directionality of the audio stream.  Options include 'both'.  This parameter is optional and if not specified, 'both' will be used.
 	Direction string `json:"direction"`
 
+	// Data is an arbitrary data field to pass to the channel driver when creating the channel. For AudioSocket, this is the UUID sent as the first frame to identify the connection.
+	Data string `json:"data,omitempty"`
+
 	// Variables defines the set of channel variables which should be bound to this channel upon creation.  This parameter is optional.
 	Variables map[string]string `json:"variables"`
 }
