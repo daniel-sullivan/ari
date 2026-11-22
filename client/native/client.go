@@ -174,6 +174,7 @@ func (c *Client) setConnected(up bool) {
 	if up {
 		v = 1
 	}
+
 	atomic.StoreInt32(&c.connected, v)
 }
 
