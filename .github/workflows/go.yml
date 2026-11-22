@@ -34,3 +34,6 @@ jobs:
 
     - name: Test
       run: go test -v ./...
+
+    - name: Test connection race
+      run: go test -race -run '^TestConnectCloseConnectedRace$' ./client/native
