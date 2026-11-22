@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/CyCoreSystems/ari/v5"
@@ -21,8 +22,8 @@ import (
 // Logger defaults to a discard handler (null output).
 // If you wish to enable logging, you can set your own
 // handler like so:
-// 		ari.Logger.SetHandler(log15.StderrHandler)
 //
+//	ari.Logger.SetHandler(log15.StderrHandler)
 var Logger = log15.New()
 
 func init() {
@@ -144,8 +145,10 @@ type Client struct {
 	// WSConfig describes the configuration for the websocket connection to Asterisk, from which events will be received.
 	WSConfig *websocket.Config
 
-	// connected is a flag indicating whether the Client is connected to Asterisk
-	connected bool
+	// connected is 1 while the websocket is connected to Asterisk. It is
+	// written by the listen goroutine and Close and read by Connected, so it
+	// is only accessed atomically.
+	connected int32
 
 	// Bus the event bus for the Client
 	bus ari.Bus
@@ -163,7 +166,16 @@ func (c *Client) ApplicationName() string {
 
 // Connected indicates whether the websocket is connected
 func (c *Client) Connected() bool {
-	return c.connected
+	return atomic.LoadInt32(&c.connected) == 1
+}
+
+func (c *Client) setConnected(up bool) {
+	var v int32
+	if up {
+		v = 1
+	}
+
+	atomic.StoreInt32(&c.connected, v)
 }
 
 // Close shuts down the ARI client
@@ -174,7 +186,7 @@ func (c *Client) Close() {
 		c.cancel()
 	}
 
-	c.connected = false
+	c.setConnected(false)
 }
 
 // Application returns the ARI Application accessors for this client
@@ -271,7 +283,7 @@ func (c *Client) Connect() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancel = cancel
 
-	if c.connected {
+	if c.Connected() {
 		cancel()
 		return eris.New("already connected")
 	}
@@ -341,7 +353,7 @@ func (c *Client) listen(ctx context.Context, wg *sync.WaitGroup) {
 		}
 
 		// We are connected
-		c.connected = true
+		c.setConnected(true)
 
 		// Signal that we are connected (the first time only)
 		if wg != nil {
@@ -354,13 +366,13 @@ func (c *Client) listen(ctx context.Context, wg *sync.WaitGroup) {
 		case err = <-c.wsRead(ws):
 			Logger.Error("read failure on websocket", "error", err)
 
-			c.connected = false
+			c.setConnected(false)
 
 			time.Sleep(10 * time.Millisecond)
 		}
 
 		// Make sure our websocket connection is closed before looping
-		c.connected = false
+		c.setConnected(false)
 
 		err = ws.Close()
 		if err != nil {
